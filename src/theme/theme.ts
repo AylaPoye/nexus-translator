@@ -1,0 +1,103 @@
+export interface ThemeColors {
+  background: string;
+  card: string;
+  cardBorder: string;
+  text: string;
+  textSecondary: string;
+  textMuted: string;
+  primary: string;
+  primaryLight: string;
+  secondary: string;
+  accent: string;
+  success: string;
+  warning: string;
+  danger: string;
+  border: string;
+  readerBg: string;
+  readerText: string;
+  readerSourceText: string;
+  readerHighlight: string;
+}
+
+export const themes: Record<'dark' | 'light' | 'sepia' | 'oled', ThemeColors> = {
+  dark: {
+    background: '#0d1117',
+    card: '#161b22',
+    cardBorder: '#30363d',
+    text: '#f0f6fc',
+    textSecondary: '#8b949e',
+    textMuted: '#6e7681',
+    primary: '#58a6ff',
+    primaryLight: '#1f6feb22',
+    secondary: '#bc8cff',
+    accent: '#39d353',
+    success: '#2ea043',
+    warning: '#d29922',
+    danger: '#f85149',
+    border: '#21262d',
+    readerBg: '#12161c',
+    readerText: '#e6edf3',
+    readerSourceText: '#7d8590',
+    readerHighlight: '#1f6feb44',
+  },
+  oled: {
+    background: '#000000',
+    card: '#0a0a0a',
+    cardBorder: '#222222',
+    text: '#ffffff',
+    textSecondary: '#a0a0a0',
+    textMuted: '#666666',
+    primary: '#60a5fa',
+    primaryLight: '#2563eb22',
+    secondary: '#c084fc',
+    accent: '#4ade80',
+    success: '#22c55e',
+    warning: '#eab308',
+    danger: '#ef4444',
+    border: '#181818',
+    readerBg: '#000000',
+    readerText: '#f3f4f6',
+    readerSourceText: '#6b7280',
+    readerHighlight: '#2563eb44',
+  },
+  sepia: {
+    background: '#f4ecd8',
+    card: '#e8dcbe',
+    cardBorder: '#d3c4a2',
+    text: '#433422',
+    textSecondary: '#79664e',
+    textMuted: '#9a856a',
+    primary: '#8b4513',
+    primaryLight: '#8b451322',
+    secondary: '#b35d1e',
+    accent: '#2e7d32',
+    success: '#388e3c',
+    warning: '#f57c00',
+    danger: '#d32f2f',
+    border: '#dfcca5',
+    readerBg: '#f7f1e1',
+    readerText: '#3a2e20',
+    readerSourceText: '#877561',
+    readerHighlight: '#8b451333',
+  },
+  light: {
+    background: '#f6f8fa',
+    card: '#ffffff',
+    cardBorder: '#d0d7de',
+    text: '#1f2328',
+    textSecondary: '#656d76',
+    textMuted: '#8c959f',
+    primary: '#0969da',
+    primaryLight: '#0969da15',
+    secondary: '#8250df',
+    accent: '#1a7f37',
+    success: '#1a7f37',
+    warning: '#9a6700',
+    danger: '#cf222e',
+    border: '#d0d7de',
+    readerBg: '#ffffff',
+    readerText: '#24292f',
+    readerSourceText: '#57606a',
+    readerHighlight: '#0969da22',
+  },
+};

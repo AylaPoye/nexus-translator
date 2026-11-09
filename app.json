@@ -1,0 +1,32 @@
+{
+  "expo": {
+    "name": "NEXUS Translator",
+    "slug": "nexus-translator-app",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#0F172A",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "favicon": "./assets/favicon.png",
+      "name": "NEXUS Translator - เครื่องมือแปลและอ่านนิยาย AI",
+      "shortName": "NEXUS",
+      "display": "standalone",
+      "orientation": "portrait",
+      "backgroundColor": "#0F172A",
+      "themeColor": "#0F172A",
+      "barStyle": "black-translucent"
+    }
+  }
+}
