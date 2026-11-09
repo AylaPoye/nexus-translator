@@ -39,7 +39,7 @@ export default function App() {
 
   return (
     <SafeAreaProvider>
-      <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]} edges={['top', 'left', 'right']}>
+      <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]} edges={['top', 'left', 'right', 'bottom']}>
         <ExpoStatusBar style={isLightMode ? 'dark' : 'light'} />
         <View style={[styles.content, { backgroundColor: colors.background }]}>
           {currentScreen === 'library' && (
