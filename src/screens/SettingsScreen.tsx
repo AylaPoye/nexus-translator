@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -41,10 +41,9 @@ const SCENES: Array<{ id: SceneId; label: string; icon: string }> = [
 ];
 
 const AVAILABLE_GEMINI_MODELS = [
-  { id: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash', badge: 'แนะนำ (เสถียร/เร็ว)' },
-  { id: 'gemini-flash-latest', label: 'Gemini Flash Latest', badge: 'อัปเดตล่าสุด' },
-  { id: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro', badge: 'ความแม่นยำสูง' },
-  { id: 'gemini-3.8-flash', label: 'Gemini 3.8 Flash', badge: 'ทดลอง (อาจพบ 503)' },
+  { id: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash', badge: 'แนะนำ (เสถียร/เร็วที่สุด)' },
+  { id: 'gemini-3.5-flash', label: 'Gemini 3.5 Flash', badge: 'คุณภาพสูง (ฉลาดล้ำ)' },
+  { id: 'gemini-3.6-flash', label: 'Gemini 3.6 Flash', badge: 'แม่นยำ (สำรอง)' },
 ];
 
 export const SettingsScreen: React.FC<SettingsScreenProps> = ({ colors, onBack }) => {
@@ -57,10 +56,22 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ colors, onBack }
   const [testingKey, setTestingKey] = useState<string | null>(null);
   const [activeTestScene, setActiveTestScene] = useState<SceneId | null>(null);
 
+  const settingsRef = useRef({ geminiKey1, geminiKey2, geminiKey3, groqKey, geminiModel });
+  useEffect(() => {
+    settingsRef.current = { geminiKey1, geminiKey2, geminiKey3, groqKey, geminiModel };
+  }, [geminiKey1, geminiKey2, geminiKey3, groqKey, geminiModel]);
+
   useEffect(() => {
     loadSettings();
     return () => {
       audioService.stopScene();
+      // Auto-save on unmount
+      const { geminiKey1: k1, geminiKey2: k2, geminiKey3: k3, groqKey: gk, geminiModel: gm } = settingsRef.current;
+      NexusDatabase.saveSettings({
+        geminiKeys: [k1, k2, k3].map(k => k.trim().replace(/^["']|["']$/g, '')),
+        groqKey: gk.trim().replace(/^["']|["']$/g, ''),
+        geminiModel: gm,
+      }).catch((e) => console.warn('Unmount auto-save failed:', e));
     };
   }, []);
 
@@ -74,8 +85,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ colors, onBack }
     setGeminiModel(s.geminiModel || 'gemini-2.5-flash');
   };
 
-  const handleBack = async () => {
-    // Auto-save any entered keys on back navigation to protect user input
+  const persistCurrentValues = async () => {
     try {
       await NexusDatabase.saveSettings({
         geminiKeys: [geminiKey1, geminiKey2, geminiKey3].map(k => k.trim().replace(/^["']|["']$/g, '')),
@@ -85,6 +95,24 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ colors, onBack }
     } catch (e) {
       console.warn('Auto-save settings failed:', e);
     }
+  };
+
+  const handleSelectModel = async (modelId: string) => {
+    setGeminiModel(modelId);
+    try {
+      await NexusDatabase.saveSettings({
+        geminiKeys: [geminiKey1, geminiKey2, geminiKey3].map(k => k.trim().replace(/^["']|["']$/g, '')),
+        groqKey: groqKey.trim().replace(/^["']|["']$/g, ''),
+        geminiModel: modelId,
+      });
+    } catch (e) {
+      console.warn('Auto-save model failed:', e);
+    }
+  };
+
+  const handleBack = async () => {
+    // Auto-save any entered keys on back navigation to protect user input
+    await persistCurrentValues();
     onBack();
   };
 
@@ -200,7 +228,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ colors, onBack }
                     borderColor: geminiModel === item.id ? colors.primary : colors.border,
                   },
                 ]}
-                onPress={() => setGeminiModel(item.id)}
+                onPress={() => handleSelectModel(item.id)}
               >
                 <Text
                   style={{
@@ -237,6 +265,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ colors, onBack }
               secureTextEntry
               value={geminiKey1}
               onChangeText={setGeminiKey1}
+              onBlur={persistCurrentValues}
             />
             <TouchableOpacity
               style={[styles.testBtn, { backgroundColor: colors.primaryLight }]}
@@ -264,6 +293,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ colors, onBack }
               secureTextEntry
               value={geminiKey2}
               onChangeText={setGeminiKey2}
+              onBlur={persistCurrentValues}
             />
             <TouchableOpacity
               style={[styles.testBtn, { backgroundColor: colors.primaryLight }]}
@@ -291,6 +321,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ colors, onBack }
               secureTextEntry
               value={geminiKey3}
               onChangeText={setGeminiKey3}
+              onBlur={persistCurrentValues}
             />
             <TouchableOpacity
               style={[styles.testBtn, { backgroundColor: colors.primaryLight }]}
@@ -325,6 +356,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ colors, onBack }
               secureTextEntry
               value={groqKey}
               onChangeText={setGroqKey}
+              onBlur={persistCurrentValues}
             />
             <TouchableOpacity
               style={[styles.testBtn, { backgroundColor: colors.secondary + '22' }]}

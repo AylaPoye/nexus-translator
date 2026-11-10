@@ -1377,7 +1377,10 @@ export class FailoverClient {
         if (err.kind === 'AUTH') { h.disabled = true; return { ok: false, skipFamily: false }; }
 
 
-        return { ok: false, skipFamily: true }; // CONTENT_FILTER | BAD_REQUEST
+        if (err.kind === 'BAD_REQUEST') { h.disabled = true; return { ok: false, skipFamily: false }; }
+
+
+        return { ok: false, skipFamily: true }; // CONTENT_FILTER
 
 
       }

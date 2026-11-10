@@ -71,10 +71,19 @@ class TranslatorService {
     const geminiModel = settings.geminiModel || 'gemini-2.5-flash';
 
     geminiKeys.forEach((key, index) => {
+      // Primary model endpoint
       endpoints.push(
         createGeminiEndpoint(key, {
           label: `gemini-key-${index + 1}`,
           model: geminiModel,
+        })
+      );
+      // Fallback model endpoint with same key (distinct model quota pool)
+      const fallbackModel = geminiModel === 'gemini-3.5-flash' ? 'gemini-2.5-flash' : 'gemini-3.5-flash';
+      endpoints.push(
+        createGeminiEndpoint(key, {
+          label: `gemini-key-${index + 1}-fallback`,
+          model: fallbackModel,
         })
       );
     });
@@ -186,6 +195,13 @@ class TranslatorService {
       });
 
       const result = await engine.translateChapter(chapterInput, abortController.signal);
+
+      if (result.telemetry.status === 'PROVIDERS_EXHAUSTED') {
+        throw new Error(result.telemetry.error || 'ทุกโมเดล API ไม่สามารถตอบสนองหรือโควต้าเต็ม');
+      }
+      if (result.telemetry.status === 'ABORTED') {
+        throw new Error('การแปลถูกยกเลิก');
+      }
 
       // Successful translation
       chapter.status = 'COMPLETED';

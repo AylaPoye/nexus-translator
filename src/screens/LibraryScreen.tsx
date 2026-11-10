@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -48,6 +48,7 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
   const [newDescription, setNewDescription] = useState('');
   const [newContent, setNewContent] = useState('');
   const [splitChapters, setSplitChapters] = useState(true);
+  const fullContentRef = useRef<string | null>(null);
 
   useEffect(() => {
     loadNovels();
@@ -85,15 +86,34 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
           }
 
           if (arrayBuffer) {
-            try {
-              // Try standard UTF-8 first
-              content = new TextDecoder('utf-8', { fatal: true }).decode(arrayBuffer);
-            } catch {
-              // Fallback to GB18030 (standard for Chinese web novel .txt files)
+            const bytes = new Uint8Array(arrayBuffer);
+            if (bytes.length >= 2 && bytes[0] === 0xFF && bytes[1] === 0xFE) {
+              // UTF-16LE with BOM
               try {
-                content = new TextDecoder('gb18030').decode(arrayBuffer);
+                content = new TextDecoder('utf-16le').decode(arrayBuffer);
               } catch {
-                content = new TextDecoder().decode(arrayBuffer);
+                content = '';
+              }
+            } else if (bytes.length >= 2 && bytes[0] === 0xFE && bytes[1] === 0xFF) {
+              // UTF-16BE with BOM
+              try {
+                content = new TextDecoder('utf-16be').decode(arrayBuffer);
+              } catch {
+                content = '';
+              }
+            }
+
+            if (!content) {
+              try {
+                // Try standard UTF-8 first
+                content = new TextDecoder('utf-8', { fatal: true }).decode(arrayBuffer);
+              } catch {
+                // Fallback to GB18030 (standard for Chinese web novel .txt files)
+                try {
+                  content = new TextDecoder('gb18030').decode(arrayBuffer);
+                } catch {
+                  content = new TextDecoder().decode(arrayBuffer);
+                }
               }
             }
           }
@@ -106,7 +126,12 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
         }
 
         if (content && content.trim().length > 0) {
-          setNewContent(content);
+          fullContentRef.current = content;
+          if (content.length > 25000) {
+            setNewContent(content.slice(0, 20000) + `\n\n... [ไฟล์ขนาดใหญ่: โหลดเนื้อหาครบ ${content.length.toLocaleString()} ตัวอักษร]`);
+          } else {
+            setNewContent(content);
+          }
           const previewChapters = splitChapters
             ? splitNovelIntoChapters(content, rawName).length
             : 1;
@@ -133,9 +158,13 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
     const novelId = 'novel_' + Date.now();
     const chapters: Chapter[] = [];
 
-    if (newContent.trim().length > 0) {
+    const effectiveContent = (fullContentRef.current && newContent.includes('[ไฟล์ขนาดใหญ่: โหลดเนื้อหาครบ'))
+      ? fullContentRef.current
+      : newContent;
+
+    if (effectiveContent.trim().length > 0) {
       if (splitChapters) {
-        const split = splitNovelIntoChapters(newContent, newTitle.trim());
+        const split = splitNovelIntoChapters(effectiveContent, newTitle.trim());
         split.forEach((sc, idx) => {
           chapters.push({
             id: `chap_${novelId}_${idx + 1}`,
@@ -153,7 +182,7 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
           novelId,
           chapterIndex: 1,
           title: `ตอนที่ 1: ${newTitle.trim()}`,
-          sourceRaw: newContent.trim(),
+          sourceRaw: effectiveContent.trim(),
           status: 'PENDING',
           progress: 0,
         });
@@ -187,6 +216,7 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
     setNewAuthor('');
     setNewDescription('');
     setNewContent('');
+    fullContentRef.current = null;
     setNewGenre('XIANXIA');
   };
 

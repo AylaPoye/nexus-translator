@@ -101,12 +101,8 @@ export class NexusDatabase {
       if (data) {
         const parsed = JSON.parse(data);
         // Automatically migrate deprecated or overloaded models to stable gemini-2.5-flash
-        if (
-          parsed.geminiModel === 'gemini-3.8-flash' ||
-          parsed.geminiModel === 'gemini-2.0-flash' ||
-          parsed.geminiModel === 'gemini-1.5-flash' ||
-          !parsed.geminiModel
-        ) {
+        const validModels = ['gemini-2.5-flash', 'gemini-3.5-flash', 'gemini-3.6-flash'];
+        if (!parsed.geminiModel || !validModels.includes(parsed.geminiModel)) {
           parsed.geminiModel = 'gemini-2.5-flash';
         }
         return { ...defaultSettings, ...parsed };
