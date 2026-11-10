@@ -29,6 +29,7 @@ import {
   Gender,
   RelationshipType,
 } from '../core/nexus_translator_core';
+import { splitNovelIntoChapters } from '../core/chapterSplitter';
 import { translatorService } from '../services/translatorService';
 
 interface NovelDetailScreenProps {
@@ -174,6 +175,89 @@ export const NovelDetailScreen: React.FC<NovelDetailScreenProps> = ({
     setTranslatingChapterId(null);
     setProgressInfo(null);
     await loadChapters();
+  };
+
+  // Re-split oversized chapters (> 300 lines or LINE_NNNN limit error)
+  const oversizedChapters = chapters.filter((c) => {
+    if (c.error && (c.error.includes('LINE_NNNN') || c.error.includes('9,999'))) return true;
+    if (c.sourceRaw && c.sourceRaw.split('\n').length > 300) return true;
+    return false;
+  });
+  const hasOversizedOrError = oversizedChapters.length > 0;
+
+  const handleResplitChapters = async (targetChapterId?: string) => {
+    const isSingle = typeof targetChapterId === 'string';
+    const targetText = isSingle
+      ? 'ต้องการแบ่งตอนนี้ออกเป็นตอนย่อย (ไม่เกิน 300 บรรทัดต่อตอน) หรือไม่?'
+      : `ตรวจพบ ${oversizedChapters.length} ตอนที่ยาวเกิน 300 บรรทัด ต้องการแบ่งเป็นตอนย่อยอัตโนมัติหรือไม่?`;
+
+    Alert.alert('แบ่งตอนใหม่ (Re-split)', targetText, [
+      { text: 'ยกเลิก', style: 'cancel' },
+      {
+        text: 'แบ่งตอนใหม่ทันที',
+        onPress: async () => {
+          try {
+            let nextIndex = 1;
+            const updatedChapters: Chapter[] = [];
+
+            // Case A: Novel only has 1 chapter and it's oversized or errored (e.g. full novel imported as 1 chapter)
+            if (!isSingle && chapters.length === 1 && (chapters[0].sourceRaw.split('\n').length > 300 || chapters[0].error)) {
+              const fullRaw = chapters[0].sourceRaw;
+              const splits = splitNovelIntoChapters(fullRaw, novel?.title || 'นิยาย', 300);
+              splits.forEach((sc) => {
+                updatedChapters.push({
+                  id: `chap_${novelId}_${nextIndex}_${Date.now()}`,
+                  novelId,
+                  chapterIndex: nextIndex++,
+                  title: sc.title,
+                  sourceRaw: sc.content,
+                  status: 'PENDING',
+                  progress: 0,
+                });
+              });
+            } else {
+              // Case B: Iterate through chapters, splitting targeted or oversized ones
+              for (const chap of chapters) {
+                const isTarget = isSingle ? chap.id === targetChapterId : false;
+                const isOver = chap.sourceRaw.split('\n').length > 300 ||
+                  (chap.error && (chap.error.includes('LINE_NNNN') || chap.error.includes('9,999')));
+
+                if (isTarget || (!isSingle && isOver)) {
+                  const splits = splitNovelIntoChapters(chap.sourceRaw, chap.title, 300);
+                  splits.forEach((sc) => {
+                    updatedChapters.push({
+                      id: `chap_${novelId}_${nextIndex}_${Date.now()}`,
+                      novelId,
+                      chapterIndex: nextIndex++,
+                      title: sc.title,
+                      sourceRaw: sc.content,
+                      status: 'PENDING',
+                      progress: 0,
+                    });
+                  });
+                } else {
+                  updatedChapters.push({
+                    ...chap,
+                    chapterIndex: nextIndex++,
+                  });
+                }
+              }
+            }
+
+            await NexusDatabase.saveChapters(novelId, updatedChapters);
+            await loadChapters();
+            const updatedNovel = await NexusDatabase.getNovel(novelId);
+            setNovel(updatedNovel);
+            Alert.alert(
+              'แบ่งตอนสำเร็จ ✅',
+              `แบ่งเนื้อหาออกเป็น ${updatedChapters.length} ตอนเรียบร้อยแล้ว (ไม่เกิน 300 บรรทัดต่อตอน)`
+            );
+          } catch (err: any) {
+            Alert.alert('เกิดข้อผิดพลาดในการแบ่งตอน', err.message || 'โปรดลองใหม่อีกครั้ง');
+          }
+        },
+      },
+    ]);
   };
 
   // Glossary save
@@ -361,7 +445,41 @@ export const NovelDetailScreen: React.FC<NovelDetailScreenProps> = ({
               <Ionicons name="add" size={16} color={colors.text} />
               <Text style={[styles.actionBtnText, { color: colors.text }]}>เพิ่มตอนใหม่</Text>
             </TouchableOpacity>
+
+            {hasOversizedOrError && (
+              <TouchableOpacity
+                style={[styles.actionBtn, { backgroundColor: '#e67e22' }]}
+                onPress={() => handleResplitChapters()}
+                disabled={translatingChapterId !== null}
+              >
+                <Ionicons name="cut-outline" size={16} color="#ffffff" />
+                <Text style={styles.actionBtnText}>แบ่งตอนใหม่ ({oversizedChapters.length})</Text>
+              </TouchableOpacity>
+            )}
           </View>
+
+          {hasOversizedOrError && (
+            <View style={[styles.resplitBanner, { backgroundColor: '#e67e2215', borderColor: '#e67e2250' }]}>
+              <View style={styles.resplitBannerContent}>
+                <Ionicons name="warning-outline" size={20} color="#e67e22" style={{ marginRight: 8, marginTop: 2 }} />
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.resplitBannerTitle, { color: colors.text }]}>
+                    ตรวจพบตอนขนาดยาวเกิน 300 บรรทัด ({oversizedChapters.length} ตอน)
+                  </Text>
+                  <Text style={[styles.resplitBannerSub, { color: colors.textMuted }]}>
+                    เนื้อหายาวเกินไปอาจทำให้ติดข้อจำกัดความยาว กดปุ่มเพื่อแบ่งเป็นตอนย่อยอัตโนมัติ (ไม่เกิน 300 บรรทัดต่อตอน)
+                  </Text>
+                </View>
+              </View>
+              <TouchableOpacity
+                style={[styles.resplitBtn, { backgroundColor: '#e67e22' }]}
+                onPress={() => handleResplitChapters()}
+              >
+                <Ionicons name="cut-outline" size={15} color="#ffffff" />
+                <Text style={styles.resplitBtnText}>แบ่งตอนใหม่ (Re-split into smaller chapters)</Text>
+              </TouchableOpacity>
+            </View>
+          )}
 
           <FlatList
             data={chapters}
@@ -405,6 +523,15 @@ export const NovelDetailScreen: React.FC<NovelDetailScreenProps> = ({
                           <Text style={[styles.statusText, { color: colors.danger }]}>ผิดพลาด</Text>
                         </View>
                       )}
+
+                      {item.sourceRaw && item.sourceRaw.split('\n').length > 300 && (
+                        <View style={[styles.statusBadge, { backgroundColor: '#e67e2222', borderColor: '#e67e2255', borderWidth: 1 }]}>
+                          <Ionicons name="alert-circle-outline" size={13} color="#e67e22" />
+                          <Text style={[styles.statusText, { color: '#e67e22', fontWeight: '600' }]}>
+                            {item.sourceRaw.split('\n').length.toLocaleString()} บรรทัด
+                          </Text>
+                        </View>
+                      )}
                     </View>
                   </View>
 
@@ -435,6 +562,16 @@ export const NovelDetailScreen: React.FC<NovelDetailScreenProps> = ({
 
                   {/* Actions for Chapter */}
                   <View style={styles.chapterButtons}>
+                    {(item.sourceRaw.split('\n').length > 300 || (item.error && (item.error.includes('LINE_NNNN') || item.error.includes('9,999')))) && (
+                      <TouchableOpacity
+                        style={[styles.resplitItemBtn, { borderColor: '#e67e22', borderWidth: 1 }]}
+                        onPress={() => handleResplitChapters(item.id)}
+                      >
+                        <Ionicons name="cut-outline" size={14} color="#e67e22" />
+                        <Text style={[styles.resplitItemBtnText, { color: '#e67e22' }]}>แบ่งตอนย่อย</Text>
+                      </TouchableOpacity>
+                    )}
+
                     {item.status === 'COMPLETED' ? (
                       <TouchableOpacity
                         style={[styles.readBtn, { backgroundColor: colors.primary }]}
@@ -1202,5 +1339,53 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontSize: 14,
     fontWeight: '700',
+  },
+  resplitBanner: {
+    marginHorizontal: 16,
+    marginBottom: 12,
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    gap: 10,
+  },
+  resplitBannerContent: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+  },
+  resplitBannerTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  resplitBannerSub: {
+    fontSize: 12,
+    lineHeight: 18,
+  },
+  resplitBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 9,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    gap: 6,
+    alignSelf: 'flex-start',
+  },
+  resplitBtnText: {
+    color: '#ffffff',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  resplitItemBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    gap: 4,
+  },
+  resplitItemBtnText: {
+    fontSize: 12,
+    fontWeight: '600',
   },
 });

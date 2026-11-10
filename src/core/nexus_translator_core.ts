@@ -714,7 +714,7 @@ export function stripReasoning(text: string): string {
   if (/^\s*<think>/i.test(t)) {
 
 
-    const i = t.search(/<LINE_\d{4}>/);
+    const i = t.search(/<LINE_\d+>/);
 
 
     t = i >= 0 ? t.slice(i) : '';
@@ -1406,7 +1406,7 @@ export class FailoverClient {
 // ---------------------------------------------------------------------------
 
 
-export const lineTag = (n: number) => `LINE_${pad4(n)}`;
+export const lineTag = (n: number, padWidth: number = 4) => `LINE_${String(n).padStart(Math.max(4, padWidth), '0')}`;
 
 
 
@@ -1417,15 +1417,15 @@ export const lineTag = (n: number) => `LINE_${pad4(n)}`;
 const neutralizeTags = (s: string) =>
 
 
-  s.replace(/<\/?(?:LINE|SOURCE|CONTEXT_BEFORE|CONTEXT_AFTER|FAILED_ATTEMPT|ISSUES)_\d{4}>/g, '');
+  s.replace(/<\/?(?:LINE|SOURCE|CONTEXT_BEFORE|CONTEXT_AFTER|FAILED_ATTEMPT|ISSUES)_\d+>/g, '');
 
 
 
 
-export function formatLines(lines: Array<{ index: number; source: string }>): string {
+export function formatLines(lines: Array<{ index: number; source: string }>, padWidth: number = 4): string {
 
 
-  return lines.map(l => `<${lineTag(l.index)}>${neutralizeTags(l.source)}</${lineTag(l.index)}>`).join('\n');
+  return lines.map(l => `<${lineTag(l.index, padWidth)}>${neutralizeTags(l.source)}</${lineTag(l.index, padWidth)}>`).join('\n');
 
 
 }
@@ -1462,7 +1462,7 @@ export function parseLines(raw: string): ParsedLines {
   const occurrences = new Map<number, string[]>();
 
 
-  const strict = /<LINE_(\d{4})>([\s\S]*?)<\/LINE_\1>/g;
+  const strict = /<LINE_(\d+)>([\s\S]*?)<\/LINE_\1>/g;
 
 
   let m: RegExpExecArray | null;
@@ -1492,7 +1492,7 @@ export function parseLines(raw: string): ParsedLines {
   const recovered = new Set<number>();
 
 
-  const loose = /<LINE_(\d{4})>([\s\S]*?)(?=<LINE_\d{4}>|$)/g;
+  const loose = /<LINE_(\d+)>([\s\S]*?)(?=<LINE_\d+>|$)/g;
 
 
   while ((m = loose.exec(text))) {
@@ -1504,7 +1504,7 @@ export function parseLines(raw: string): ParsedLines {
     if (occurrences.has(id)) continue;
 
 
-    const body = m[2].replace(/<\/LINE_\d{4}>/g, '').trim();
+    const body = m[2].replace(/<\/LINE_\d+>/g, '').trim();
 
 
     if (body) { occurrences.set(id, [body]); recovered.add(id); }
@@ -2553,10 +2553,10 @@ export function buildSystemPrompt(ctx: PromptContext): string {
 
 
 
-export function buildTranslatePrompt(batch: Array<{ index: number; source: string }>, previousContext: string): string {
+export function buildTranslatePrompt(batch: Array<{ index: number; source: string }>, previousContext: string, padWidth: number = 4): string {
 
 
-  const ids = batch.map(l => lineTag(l.index));
+  const ids = batch.map(l => lineTag(l.index, padWidth));
 
 
   return [
@@ -2574,7 +2574,7 @@ export function buildTranslatePrompt(batch: Array<{ index: number; source: strin
     `Translate the ${batch.length} lines below. Required tags, in order: ${ids.join(', ')}.`,
 
 
-    '<SOURCE>', formatLines(batch), '</SOURCE>',
+    '<SOURCE>', formatLines(batch, padWidth), '</SOURCE>',
 
 
   ].filter(Boolean).join('\n');
@@ -2611,13 +2611,13 @@ export interface RepairItem {
 
 
 
-export function buildRepairPrompt(items: RepairItem[]): string {
+export function buildRepairPrompt(items: RepairItem[], padWidth: number = 4): string {
 
 
   const blocks = items.map(it => {
 
 
-    const n = pad4(it.index);
+    const n = String(it.index).padStart(Math.max(4, padWidth), '0');
 
 
     const ctxBlock = (tag: string, c?: { source: string; translated: string | null }) => c
@@ -2668,7 +2668,7 @@ export function buildRepairPrompt(items: RepairItem[]): string {
     'CONTEXT_BEFORE / CONTEXT_AFTER are read-only — use them for continuity, pronouns and tone; never output them.',
 
 
-    `Return exactly ${items.length} tag(s): ${items.map(i => lineTag(i.index)).join(', ')} — format <LINE_NNNN>Thai text</LINE_NNNN>, nothing else.`,
+    `Return exactly ${items.length} tag(s): ${items.map(i => lineTag(i.index, padWidth)).join(', ')} — format <LINE_NNNN>Thai text</LINE_NNNN>, nothing else.`,
 
 
     '', ...blocks,
@@ -2852,7 +2852,8 @@ export class NexusTranslationEngine {
     const paragraphs = splitParagraphs(input.sourceText);
 
 
-    if (paragraphs.length > 9999) throw new Error('Chapter exceeds 9,999 lines (LINE_NNNN limit)');
+    // Support dynamic zero-padding for chapters exceeding 9,999 lines
+    const padWidth = Math.max(4, String(paragraphs.length).length);
 
 
     const kinds = classifyNonStory(paragraphs, input.sourceDomain, input.nonStoryPatterns);
@@ -2927,7 +2928,7 @@ export class NexusTranslationEngine {
         this.o.onProgress?.({ phase: 'translate', batch: bi + 1, totalBatches: batches.length });
 
 
-        const resp = await this.call(system, buildTranslatePrompt(batch, rolling), c.temperature, 'translate', tel, signal);
+        const resp = await this.call(system, buildTranslatePrompt(batch, rolling, padWidth), c.temperature, 'translate', tel, signal);
 
 
         const parsed = parseLines(resp.text);
@@ -3007,7 +3008,7 @@ export class NexusTranslationEngine {
           });
 
 
-          const resp = await this.call(system, buildRepairPrompt(items), c.repairTemperature, 'repair', tel, signal);
+          const resp = await this.call(system, buildRepairPrompt(items, padWidth), c.repairTemperature, 'repair', tel, signal);
 
 
           const parsed = parseLines(resp.text);
