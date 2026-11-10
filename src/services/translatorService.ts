@@ -63,21 +63,27 @@ class TranslatorService {
   private buildEndpoints(settings: AppSettings): LLMEndpoint[] {
     const endpoints: LLMEndpoint[] = [];
 
-    // Add Gemini keys (1 to 3)
-    const geminiKeys = (settings.geminiKeys || []).filter(k => k && k.trim().length > 0);
+    // Add Gemini keys (1 to 3) with trimming and quote removal
+    const geminiKeys = (settings.geminiKeys || [])
+      .map(k => (k || '').trim().replace(/^["']|["']$/g, ''))
+      .filter(k => k.length > 0);
+
+    const geminiModel = settings.geminiModel || 'gemini-2.5-flash';
+
     geminiKeys.forEach((key, index) => {
       endpoints.push(
-        createGeminiEndpoint(key.trim(), {
+        createGeminiEndpoint(key, {
           label: `gemini-key-${index + 1}`,
-          model: settings.geminiModel || 'gemini-3.8-flash',
+          model: geminiModel,
         })
       );
     });
 
     // Add Groq key as high-speed failover
-    if (settings.groqKey && settings.groqKey.trim().length > 0) {
+    const groqKey = (settings.groqKey || '').trim().replace(/^["']|["']$/g, '');
+    if (groqKey.length > 0) {
       endpoints.push(
-        createGroqEndpoint(settings.groqKey.trim(), {
+        createGroqEndpoint(groqKey, {
           label: 'groq-qwen-failover',
           model: settings.groqModel || 'qwen/qwen3.8-27b',
         })

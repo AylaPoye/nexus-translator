@@ -429,7 +429,7 @@ export function splitParagraphs(text: string): string[] {
 // ---------------------------------------------------------------------------
 
 
-export const DEFAULT_GEMINI_MODEL = 'gemini-3.8-flash';
+export const DEFAULT_GEMINI_MODEL = 'gemini-2.5-flash';
 
 
 /** As specified by the product spec — verify against Groq's GET /openai/v1/models. */
@@ -478,20 +478,13 @@ export class ProviderError extends Error {
 
 
 export class AllProvidersFailedError extends Error {
-
-
   constructor(public readonly errors: ProviderError[]) {
-
-
-    super('All providers failed: ' + errors.map(e => `[${e.endpointId}] ${e.kind}: ${e.message}`).join(' | '));
-
-
+    const details = errors.length > 0
+      ? errors.map(e => `[${e.endpointId ?? 'Endpoint'}] ${e.kind}: ${e.message}`).join(' | ')
+      : 'ไม่พบคีย์ API หรือทุก Endpoint ใช้งานไม่ได้';
+    super(details);
     this.name = 'AllProvidersFailedError';
-
-
   }
-
-
 }
 
 
@@ -672,29 +665,24 @@ function parseRetryAfterMs(body: string, headers: Headers): number | undefined {
 
 
 function classifyHttpError(status: number, body: string, headers: Headers): ProviderError {
-
-
-  const snippet = body.slice(0, 300);
-
+  let snippet = body.slice(0, 300);
+  try {
+    const parsed = JSON.parse(body);
+    if (parsed.error?.message) {
+      snippet = parsed.error.message;
+    } else if (typeof parsed.error === 'string') {
+      snippet = parsed.error;
+    }
+  } catch {
+    // keep raw snippet
+  }
 
   if (status === 429) return new ProviderError('QUOTA', snippet, status, parseRetryAfterMs(body, headers));
-
-
   if (status === 401 || status === 403 || /API_KEY_INVALID|invalid api key/i.test(body))
-
-
     return new ProviderError('AUTH', snippet, status);
-
-
   if (status === 408 || status === 498 || status >= 500)
-
-
     return new ProviderError('TRANSIENT', snippet, status, parseRetryAfterMs(body, headers));
-
-
   return new ProviderError('BAD_REQUEST', snippet, status);
-
-
 }
 
 
@@ -829,18 +817,11 @@ export function createGeminiEndpoint(apiKey: string, o: GeminiOptions = {}): LLM
 
 
 
+      const url = `${base}/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
       const r = await httpPostJson(
-
-
-        `${base}/models/${encodeURIComponent(model)}:generateContent`,
-
-
+        url,
         { 'x-goog-api-key': apiKey },
-
-
         {
-
-
           systemInstruction: { parts: [{ text: req.system }] },
 
 

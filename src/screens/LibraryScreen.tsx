@@ -17,6 +17,7 @@ import { Header } from '../components/Header';
 import { ThemeColors } from '../theme/theme';
 import { NexusDatabase, Novel, Chapter } from '../storage/db';
 import { Genre, splitParagraphs } from '../core/nexus_translator_core';
+import { splitNovelIntoChapters } from '../core/chapterSplitter';
 
 interface LibraryScreenProps {
   colors: ThemeColors;
@@ -61,28 +62,65 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
   const handlePickDocument = async () => {
     try {
       const res = await DocumentPicker.getDocumentAsync({
-        type: ['text/plain', 'text/*'],
+        type: ['text/plain', 'text/*', '*/*'],
         copyToCacheDirectory: true,
       });
 
       if (!res.canceled && res.assets && res.assets[0]) {
         const file = res.assets[0];
-        setNewTitle(file.name.replace(/\.[^/.]+$/, ''));
+        const rawName = file.name || 'นิยายนำเข้า';
+        setNewTitle(rawName.replace(/\.[^/.]+$/, ''));
 
-        // Read text content
+        let content = '';
         if (Platform.OS === 'web') {
-          const response = await fetch(file.uri);
-          const text = await response.text();
-          setNewContent(text);
+          // On Web, support File object, Blob, and fetch(file.uri)
+          const rawFile = (file as any).file;
+          let arrayBuffer: ArrayBuffer | null = null;
+
+          if (rawFile && typeof rawFile.arrayBuffer === 'function') {
+            arrayBuffer = await rawFile.arrayBuffer();
+          } else if (file.uri) {
+            const resp = await fetch(file.uri);
+            arrayBuffer = await resp.arrayBuffer();
+          }
+
+          if (arrayBuffer) {
+            try {
+              // Try standard UTF-8 first
+              content = new TextDecoder('utf-8', { fatal: true }).decode(arrayBuffer);
+            } catch {
+              // Fallback to GB18030 (standard for Chinese web novel .txt files)
+              try {
+                content = new TextDecoder('gb18030').decode(arrayBuffer);
+              } catch {
+                content = new TextDecoder().decode(arrayBuffer);
+              }
+            }
+          }
         } else {
+          // Native mobile (iOS / Android)
           const FileSystem = await import('expo-file-system');
-          const text = await FileSystem.readAsStringAsync(file.uri);
-          setNewContent(text);
+          content = await FileSystem.readAsStringAsync(file.uri, {
+            encoding: FileSystem.EncodingType.UTF8,
+          });
+        }
+
+        if (content && content.trim().length > 0) {
+          setNewContent(content);
+          const previewChapters = splitChapters
+            ? splitNovelIntoChapters(content, rawName).length
+            : 1;
+          Alert.alert(
+            'นำเข้าไฟล์สำเร็จ ✅',
+            `อ่านไฟล์ "${rawName}" เรียบร้อยแล้ว\n• ความยาว: ${(content.length / 1000).toFixed(1)}k ตัวอักษร\n• ตรวจพบ: ${previewChapters} ตอน`
+          );
+        } else {
+          Alert.alert('แจ้งเตือน', 'ไฟล์ที่เลือกไม่มีข้อความหรือว่างเปล่า');
         }
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error picking document:', err);
-      Alert.alert('ข้อผิดพลาด', 'ไม่สามารถอ่านไฟล์ได้');
+      Alert.alert('ข้อผิดพลาด', `ไม่สามารถอ่านไฟล์ได้: ${err?.message || 'โปรดลองใหม่อีกครั้ง'}`);
     }
   };
 
@@ -97,41 +135,24 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
 
     if (newContent.trim().length > 0) {
       if (splitChapters) {
-        // Match Chinese chapter headers: 第X章 or 第X回 or Chapter X
-        const chapterRegex = /(?:第[0-9一二三四五六七八九十百千]+[章回节].*?)(?=(?:第[0-9一二三四五六七八九十百千]+[章回节]|\s*$))/gs;
-        const matches = newContent.match(chapterRegex);
-
-        if (matches && matches.length > 0) {
-          matches.forEach((chapText, idx) => {
-            const firstLine = chapText.trim().split('\n')[0];
-            chapters.push({
-              id: `chap_${novelId}_${idx + 1}`,
-              novelId,
-              chapterIndex: idx + 1,
-              title: firstLine.length < 50 ? firstLine : `ตอนที่ ${idx + 1}`,
-              sourceRaw: chapText.trim(),
-              status: 'PENDING',
-              progress: 0,
-            });
-          });
-        } else {
-          // If no regex match, add as single chapter
+        const split = splitNovelIntoChapters(newContent, newTitle.trim());
+        split.forEach((sc, idx) => {
           chapters.push({
-            id: `chap_${novelId}_1`,
+            id: `chap_${novelId}_${idx + 1}`,
             novelId,
-            chapterIndex: 1,
-            title: `ตอนที่ 1: ${newTitle.trim()}`,
-            sourceRaw: newContent.trim(),
+            chapterIndex: idx + 1,
+            title: sc.title,
+            sourceRaw: sc.content,
             status: 'PENDING',
             progress: 0,
           });
-        }
+        });
       } else {
         chapters.push({
           id: `chap_${novelId}_1`,
           novelId,
           chapterIndex: 1,
-          title: 'ตอนที่ 1',
+          title: `ตอนที่ 1: ${newTitle.trim()}`,
           sourceRaw: newContent.trim(),
           status: 'PENDING',
           progress: 0,

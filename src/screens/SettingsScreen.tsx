@@ -40,13 +40,20 @@ const SCENES: Array<{ id: SceneId; label: string; icon: string }> = [
   { id: 'SADNESS', label: 'โศกศัลย์', icon: 'water-outline' },
 ];
 
+const AVAILABLE_GEMINI_MODELS = [
+  { id: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash', badge: 'แนะนำ (เสถียร/เร็ว)' },
+  { id: 'gemini-flash-latest', label: 'Gemini Flash Latest', badge: 'อัปเดตล่าสุด' },
+  { id: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro', badge: 'ความแม่นยำสูง' },
+  { id: 'gemini-3.8-flash', label: 'Gemini 3.8 Flash', badge: 'ทดลอง (อาจพบ 503)' },
+];
+
 export const SettingsScreen: React.FC<SettingsScreenProps> = ({ colors, onBack }) => {
   const [settings, setSettings] = useState<AppSettings>(defaultSettings);
   const [geminiKey1, setGeminiKey1] = useState('');
   const [geminiKey2, setGeminiKey2] = useState('');
   const [geminiKey3, setGeminiKey3] = useState('');
   const [groqKey, setGroqKey] = useState('');
-  const [geminiModel, setGeminiModel] = useState('gemini-3.8-flash');
+  const [geminiModel, setGeminiModel] = useState('gemini-2.5-flash');
   const [testingKey, setTestingKey] = useState<string | null>(null);
   const [activeTestScene, setActiveTestScene] = useState<SceneId | null>(null);
 
@@ -64,21 +71,38 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ colors, onBack }
     setGeminiKey2(s.geminiKeys[1] || '');
     setGeminiKey3(s.geminiKeys[2] || '');
     setGroqKey(s.groqKey || '');
-    setGeminiModel(s.geminiModel || 'gemini-3.8-flash');
+    setGeminiModel(s.geminiModel || 'gemini-2.5-flash');
+  };
+
+  const handleBack = async () => {
+    // Auto-save any entered keys on back navigation to protect user input
+    try {
+      await NexusDatabase.saveSettings({
+        geminiKeys: [geminiKey1, geminiKey2, geminiKey3].map(k => k.trim().replace(/^["']|["']$/g, '')),
+        groqKey: groqKey.trim().replace(/^["']|["']$/g, ''),
+        geminiModel: geminiModel,
+      });
+    } catch (e) {
+      console.warn('Auto-save settings failed:', e);
+    }
+    onBack();
   };
 
   const handleSaveKeys = async () => {
+    const cleanKeys = [geminiKey1, geminiKey2, geminiKey3].map(k => k.trim().replace(/^["']|["']$/g, ''));
+    const cleanGroq = groqKey.trim().replace(/^["']|["']$/g, '');
     const updated = await NexusDatabase.saveSettings({
-      geminiKeys: [geminiKey1.trim(), geminiKey2.trim(), geminiKey3.trim()],
-      groqKey: groqKey.trim(),
+      geminiKeys: cleanKeys,
+      groqKey: cleanGroq,
       geminiModel: geminiModel,
     });
     setSettings(updated);
-    Alert.alert('สำเร็จ', 'บันทึกการตั้งค่า API Keys เรียบร้อยแล้ว');
+    Alert.alert('สำเร็จ ✅', 'บันทึกการตั้งค่า API Keys เรียบร้อยแล้ว');
   };
 
   const testKey = async (slotName: string, keyVal: string, isGroq = false) => {
-    if (!keyVal || !keyVal.trim()) {
+    const cleanVal = keyVal.trim().replace(/^["']|["']$/g, '');
+    if (!cleanVal) {
       Alert.alert('แจ้งเตือน', `กรุณาระบุคีย์ ${slotName} ก่อนกดทดสอบ`);
       return;
     }
@@ -86,8 +110,8 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ colors, onBack }
     setTestingKey(slotName);
     try {
       const endpoint = isGroq
-        ? createGroqEndpoint(keyVal.trim(), { model: settings.groqModel })
-        : createGeminiEndpoint(keyVal.trim(), { model: geminiModel });
+        ? createGroqEndpoint(cleanVal, { model: settings.groqModel })
+        : createGeminiEndpoint(cleanVal, { model: geminiModel });
 
       const resp = await endpoint.call({
         system: 'You are a test assistant.',
@@ -95,7 +119,19 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ colors, onBack }
       });
 
       if (resp.text && resp.text.length > 0) {
-        Alert.alert('เชื่อมต่อสำเร็จ! ✅', `${slotName} ใช้งานได้ปกติ (การตอบสนอง: ${resp.text.trim()})`);
+        // Auto-save the valid key
+        const currentKeys = [geminiKey1, geminiKey2, geminiKey3].map(k => k.trim().replace(/^["']|["']$/g, ''));
+        if (slotName === 'Gemini Key 1') currentKeys[0] = cleanVal;
+        else if (slotName === 'Gemini Key 2') currentKeys[1] = cleanVal;
+        else if (slotName === 'Gemini Key 3') currentKeys[2] = cleanVal;
+
+        await NexusDatabase.saveSettings({
+          geminiKeys: currentKeys,
+          groqKey: isGroq ? cleanVal : groqKey.trim(),
+          geminiModel,
+        });
+
+        Alert.alert('เชื่อมต่อสำเร็จ! ✅', `${slotName} ใช้งานได้ปกติ พร้อมบันทึกคีย์เรียบร้อยแล้ว`);
       } else {
         Alert.alert('เตือน', 'ไม่ได้รับข้อความตอบกลับจาก API');
       }
@@ -136,7 +172,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ colors, onBack }
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <Header title="การตั้งค่า (Settings)" colors={colors} onBack={onBack} />
+      <Header title="การตั้งค่า (Settings)" colors={colors} onBack={handleBack} />
 
       <ScrollView contentContainerStyle={styles.scrollContent}>
         {/* SECTION 1: API KEYS */}
@@ -154,26 +190,35 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ colors, onBack }
           {/* Gemini Model Selector */}
           <Text style={[styles.keyLabel, { color: colors.textSecondary }]}>โมเดล Gemini ที่ใช้งาน</Text>
           <View style={styles.modelChipsRow}>
-            {(['gemini-3.8-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'] as const).map((m) => (
+            {AVAILABLE_GEMINI_MODELS.map((item) => (
               <TouchableOpacity
-                key={m}
+                key={item.id}
                 style={[
                   styles.modelChip,
                   {
-                    backgroundColor: geminiModel === m ? colors.primary : colors.background,
-                    borderColor: geminiModel === m ? colors.primary : colors.border,
+                    backgroundColor: geminiModel === item.id ? colors.primary : colors.background,
+                    borderColor: geminiModel === item.id ? colors.primary : colors.border,
                   },
                 ]}
-                onPress={() => setGeminiModel(m)}
+                onPress={() => setGeminiModel(item.id)}
               >
                 <Text
                   style={{
-                    color: geminiModel === m ? '#ffffff' : colors.text,
+                    color: geminiModel === item.id ? '#ffffff' : colors.text,
                     fontSize: 12,
                     fontWeight: '700',
                   }}
                 >
-                  {m}
+                  {item.label}
+                </Text>
+                <Text
+                  style={{
+                    color: geminiModel === item.id ? '#e0e7ff' : colors.textMuted,
+                    fontSize: 10,
+                    marginTop: 2,
+                  }}
+                >
+                  {item.badge}
                 </Text>
               </TouchableOpacity>
             ))}

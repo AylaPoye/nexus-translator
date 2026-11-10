@@ -423,6 +423,16 @@ export const NovelDetailScreen: React.FC<NovelDetailScreenProps> = ({
                     </View>
                   )}
 
+                  {/* Error detail banner */}
+                  {item.status === 'ERROR' && item.error ? (
+                    <View style={[styles.errorBox, { backgroundColor: colors.danger + '18', borderColor: colors.danger + '40' }]}>
+                      <Ionicons name="alert-circle-outline" size={14} color={colors.danger} />
+                      <Text style={[styles.errorBoxText, { color: colors.danger }]} numberOfLines={2}>
+                        {item.error}
+                      </Text>
+                    </View>
+                  ) : null}
+
                   {/* Actions for Chapter */}
                   <View style={styles.chapterButtons}>
                     {item.status === 'COMPLETED' ? (
@@ -960,6 +970,20 @@ const styles = StyleSheet.create({
   },
   progressBar: {
     height: '100%',
+  },
+  errorBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderRadius: 6,
+    borderWidth: 1,
+    marginVertical: 6,
+    gap: 6,
+  },
+  errorBoxText: {
+    fontSize: 11,
+    flex: 1,
   },
   chapterButtons: {
     flexDirection: 'row',

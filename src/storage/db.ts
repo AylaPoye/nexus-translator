@@ -80,7 +80,7 @@ const STORAGE_KEYS = {
 export const defaultSettings: AppSettings = {
   geminiKeys: ['', '', ''],
   groqKey: '',
-  geminiModel: 'gemini-3.8-flash',
+  geminiModel: 'gemini-2.5-flash',
   groqModel: 'qwen/qwen3.8-27b',
   ttsSpeed: 1.0,
   ttsPitch: 1.0,
@@ -100,8 +100,14 @@ export class NexusDatabase {
       const data = await AsyncStorage.getItem(STORAGE_KEYS.SETTINGS);
       if (data) {
         const parsed = JSON.parse(data);
-        if (parsed.geminiModel === 'gemini-2.5-flash') {
-          parsed.geminiModel = 'gemini-3.8-flash';
+        // Automatically migrate deprecated or overloaded models to stable gemini-2.5-flash
+        if (
+          parsed.geminiModel === 'gemini-3.8-flash' ||
+          parsed.geminiModel === 'gemini-2.0-flash' ||
+          parsed.geminiModel === 'gemini-1.5-flash' ||
+          !parsed.geminiModel
+        ) {
+          parsed.geminiModel = 'gemini-2.5-flash';
         }
         return { ...defaultSettings, ...parsed };
       }
