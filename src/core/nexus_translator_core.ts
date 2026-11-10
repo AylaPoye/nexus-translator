@@ -2659,6 +2659,7 @@ export function buildRepairPrompt(items: RepairItem[], padWidth: number = 4): st
   });
 
 
+  const sampleTag = 'LINE_' + 'N'.repeat(Math.max(4, padWidth));
   return [
 
 
@@ -2668,7 +2669,7 @@ export function buildRepairPrompt(items: RepairItem[], padWidth: number = 4): st
     'CONTEXT_BEFORE / CONTEXT_AFTER are read-only — use them for continuity, pronouns and tone; never output them.',
 
 
-    `Return exactly ${items.length} tag(s): ${items.map(i => lineTag(i.index, padWidth)).join(', ')} — format <LINE_NNNN>Thai text</LINE_NNNN>, nothing else.`,
+    `Return exactly ${items.length} tag(s): ${items.map(i => lineTag(i.index, padWidth)).join(', ')} — format <${sampleTag}>Thai text</${sampleTag}>, nothing else.`,
 
 
     '', ...blocks,

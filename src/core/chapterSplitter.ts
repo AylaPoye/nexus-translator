@@ -26,21 +26,41 @@ export const TARGET_CHAPTER_LINES = 250;
  * - Thai: ตอนที่ 1, บทที่ 1, ตอน 1, บท 1
  * - Special markers: 楔子, 序章, 序言, 引子, 前言, 尾声, 番外, 后记, 感言, 完本感言, 上架感言
  */
-export const CHAPTER_HEADER_REGEX = /^[ \t\u3000\uFEFF]*(?:(?:[【\[（(]\s*)?(?:(?:正文|VIP|vip|☆[、\s]*|[★◆■●*])[ \t]*)?(?:第\s*[0-9一二三四五六七八九十百千万零]+\s*[章回节集卷部篇话話]|卷\s*[0-9一二三四五六七八九十百]+|(?:Chapter|Ch\.)\s*[0-9]+|(?:บท|ตอน)(?:ที่)?\s*[0-9一二三四五六七八九十]+)(?:\s*[】\]）)])?(?:[:：\-—、\s]|$)|(?:[楔序引]子|序[章言]|前言|尾声|番外(?:篇)?|后记|感言|完本感言|上架感言)|(?:[【\[（(]\s*\d{1,5}\s*[】\]）)])|(?:\d{1,5}\s*[、:：\-—]\s*)|(?:\d{1,5}\s*[.．](?!\d)\s*)|(?:0\d{1,4}\s*)|(?:\d{1,5}\s+))/i;
+export const CHAPTER_HEADER_REGEX = /^[ \t\u3000\uFEFF]*(?:(?:[【\[（(]\s*)?(?:(?:正文|VIP|vip|☆[、\s]*|[★◆■●*])[ \t]*)?(?:第\s*[0-9一二三四五六七八九十百千万零]+\s*[章回节集卷部篇话話]|卷\s*[0-9一二三四五六七八九十百]+|(?:Chapter|Chap\.?|Ch\.?)\s*[0-9]+|(?:บท|ตอน)(?:ที่)?\s*[0-9一二三四五六七八九十]+)(?:\s*[】\]）)])?(?:[:：\-—、\s]|$)|(?:[楔序引]子|序[章言]|前言|尾声|番外(?:篇)?|后记|感言|完本感言|上架感言)(?:[:：\-—、\s0-9一二三四五六七八九十]|$)|(?:[【\[（(]\s*\d{1,5}\s*[】\]）)])|(?:\d{1,5}\s*[、:：\-—]\s*)|(?:\d{1,5}\s*[.．](?!\d)\s*)|(?:0\d{1,4}(?:[、:：\-—.\s]|$))|(?:\d{1,5}(?:\s+|$)))/i;
+
+const MEASURE_OR_TEMPORAL_REGEX = /^\d{1,5}\s*(?:秒|分|分钟|小时|点|点钟|天|日|周|星期|月|年|岁|代|米|厘米|毫米|公里|里|步|个|只|条|张|本|支|位|名|件|所|辆|台|架|艘|颗|粒|朵|把|阵|声|道|趟|次|回|遍|倍|成|度|斤|克|公斤|千克|吨|块|元|角|钱|毫升|升|毫克|%|％|号|楼|层|室|栋|座|排|列|组|队|人|批)(?:[前后内外左右来多余]|之[前后]|半)?(?:\s*[,，。！？!?…~～]|\s+[^\s]|$)/;
 
 /**
  * Tests whether a trimmed line is genuinely a chapter header.
- * Discards oversized lines (> 80 chars) and pure numeric lines that end like narrative sentences.
+ * Discards oversized lines (> 80 chars), clock times, measure words, and narrative sentences.
  */
 export function isChapterHeaderLine(line: string): boolean {
   const trimmed = line.trim();
   if (!trimmed || trimmed.length > 80) return false;
 
-  // For pure numbers without explicit keywords (第, Chapter, ตอน, etc.),
-  // reject if it ends with common sentence terminators (period, comma, quotes).
-  const hasExplicitMarker = /(?:第\s*[0-9一二三四五六七八九十百千万零]+\s*[章回节集卷部篇话話]|卷\s*[0-9]|(?:Chapter|Ch\.)|(?:บท|ตอน)(?:ที่)?|[楔序引]子|序[章言]|前言|尾声|番外|后记)/i.test(trimmed);
-  if (!hasExplicitMarker && /[。，,;；”"』」]$/.test(trimmed)) {
+  // 1. Explicit markers (第X章, Chapter X, ตอนที่ X, 卷X, 楔子, 序章, 尾声, etc.)
+  const explicitMarkerRegex = /^[ \t\u3000\uFEFF]*(?:(?:[【\[（(]\s*)?(?:(?:正文|VIP|vip|☆[、\s]*|[★◆■●*])[ \t]*)?(?:第\s*[0-9一二三四五六七八九十百千万零]+\s*[章回节集卷部篇话話]|卷\s*[0-9一二三四五六七八九十百]+|(?:Chapter|Chap\.?|Ch\.?)\s*[0-9]+|(?:บท|ตอน)(?:ที่)?\s*[0-9一二三四五六七八九十]+)(?:\s*[】\]）)])?(?:[:：\-—、\s]|$)|(?:[楔序引]子|序[章言]|前言|尾声|番外(?:篇)?|后记|感言|完本感言|上架感言)(?:[:：\-—、\s0-9一二三四五六七八九十]|$))/i;
+
+  if (explicitMarkerRegex.test(trimmed)) {
+    return true;
+  }
+
+  // 2. Reject clock time formats (01:00, 12:30, 01:00:00)
+  if (/^\d{1,2}[:：]\d{2}(?::\d{2})?/.test(trimmed)) {
     return false;
+  }
+
+  // 3. Reject numbers followed by measure words / units / temporal words (e.g. 3 天后, 10 年后, 100 米外, 100 个人)
+  if (MEASURE_OR_TEMPORAL_REGEX.test(trimmed)) {
+    return false;
+  }
+
+  // 4. Reject narrative sentences ending in sentence terminators
+  if (/[。，,;；”"』」！？!?…~～]$/.test(trimmed)) {
+    // If it has leading zero or delimiter (e.g. 001 标题！, 1、标题！), allow punctuation
+    if (!/^0\d{1,4}(?:[、:：\-—.\s]|$)/.test(trimmed) && !/^\d{1,5}\s*[、:：\-—.]\s*/.test(trimmed)) {
+      return false;
+    }
   }
 
   return CHAPTER_HEADER_REGEX.test(trimmed);
@@ -67,6 +87,9 @@ export function partitionChapterIfOversized(
   let startIndex = 0;
   let partNumber = 1;
 
+  // Strip any existing sub-part suffix to prevent recursive nesting (e.g. "Title (ตอนย่อย 1) (ตอนย่อย 1)")
+  const baseTitle = chapter.title.replace(/\s*\((?:ตอนย่อย|ช่วงที่)\s*\d+\)$/, '').trim();
+
   while (startIndex < lines.length) {
     const remaining = lines.length - startIndex;
     if (remaining <= maxLines) {
@@ -74,7 +97,7 @@ export function partitionChapterIfOversized(
       const content = chunkLines.join('\n').trim();
       if (content.length > 0) {
         subParts.push({
-          title: `${chapter.title} (ตอนย่อย ${partNumber})`,
+          title: `${baseTitle} (ตอนย่อย ${partNumber})`,
           content,
         });
       }
@@ -109,7 +132,7 @@ export function partitionChapterIfOversized(
     const content = chunkLines.join('\n').trim();
     if (content.length > 0) {
       subParts.push({
-        title: `${chapter.title} (ตอนย่อย ${partNumber})`,
+        title: `${baseTitle} (ตอนย่อย ${partNumber})`,
         content,
       });
       partNumber++;
@@ -157,12 +180,16 @@ export function splitNovelIntoChapters(
     }
 
     // Monolithic text: safely chunk into <= maxLinesPerChapter
+    const isSingleChapterRef = /^(?:ตอนที่|บทที่|第|Chapter|Ch\.)\s*\d+/i.test(novelTitle);
+    const baseTitle = isSingleChapterRef ? novelTitle : `ตอนที่ 1: ${novelTitle}`;
     return partitionChapterIfOversized(
-      { title: `ตอนที่ 1: ${novelTitle}`, content: normalized },
+      { title: baseTitle, content: normalized },
       maxLinesPerChapter,
       TARGET_CHAPTER_LINES
     ).map((chap, idx) => ({
-      title: `ตอนที่ ${idx + 1} (ช่วงที่ ${idx + 1})`,
+      title: isSingleChapterRef
+        ? chap.title
+        : `ตอนที่ ${idx + 1} (ช่วงที่ ${idx + 1})`,
       content: chap.content,
     }));
   }
@@ -182,25 +209,38 @@ export function splitNovelIntoChapters(
     }
   }
 
-  // 2. Capture each chapter
+  // 2. Precompute substantive line counts for efficient TOC filtering (O(N))
+  const counts = new Array<number>(chapterStarts.length);
+  for (let i = 0; i < chapterStarts.length; i++) {
+    const s = chapterStarts[i];
+    const e = i + 1 < chapterStarts.length ? chapterStarts[i + 1] : lines.length;
+    let count = 0;
+    for (let j = s; j < e; j++) {
+      if (lines[j].trim().length > 0) count++;
+    }
+    counts[i] = count;
+  }
+
+  const hasSubstantiveAfter = new Array<boolean>(chapterStarts.length).fill(false);
+  let hasSubstantive = false;
+  for (let i = chapterStarts.length - 1; i >= 0; i--) {
+    hasSubstantiveAfter[i] = hasSubstantive;
+    if (counts[i] > 2) {
+      hasSubstantive = true;
+    }
+  }
+
+  // 3. Capture each chapter
   for (let idx = 0; idx < chapterStarts.length; idx++) {
     const startLine = chapterStarts[idx];
     const endLine = idx + 1 < chapterStarts.length ? chapterStarts[idx + 1] : lines.length;
-    const chapLines = lines.slice(startLine, endLine);
-    const nonEmptyLines = chapLines.filter(l => l.trim().length > 0);
 
     // If this chapter section only contains the header line (TOC stub) and later chapters have content, skip TOC stub
-    if (nonEmptyLines.length <= 1 && idx + 1 < chapterStarts.length) {
-      const hasSubstantiveLater = chapterStarts.some((s, i) => {
-        if (i <= idx) return false;
-        const e = i + 1 < chapterStarts.length ? chapterStarts[i + 1] : lines.length;
-        return lines.slice(s, e).filter(l => l.trim().length > 0).length > 2;
-      });
-      if (hasSubstantiveLater) {
-        continue;
-      }
+    if (counts[idx] <= 1 && hasSubstantiveAfter[idx]) {
+      continue;
     }
 
+    const chapLines = lines.slice(startLine, endLine);
     const chapText = chapLines.join('\n').trim();
     const headerLine = lines[startLine].trim();
     // Clean title (cap at 60 chars)

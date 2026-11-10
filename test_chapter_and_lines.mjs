@@ -29,10 +29,18 @@ const headerCases = [
   '001：标题',
   '001 - 标题',
   '1 - 标题',
+  // Brackets around numbers
   '【001】',
   '[001]',
   '(001)',
   '（001）',
+  '【1】',
+  '[1]',
+  '(1)',
+  '（1）',
+  '001',
+  '1',
+  '001 闪婚当天！',
 
   // Brackets and prefixes with 第X章
   '【第1章】',
@@ -98,7 +106,19 @@ const narrativeCases = [
   '100个人走了过来，没有任何声响。',
   '1.3%的增长率让大家很惊讶。',
   '他叹了口气说：“这不可能。”',
-  '这只是普通的一行叙述文字，包含很多字。'
+  '这只是普通的一行叙述文字，包含很多字。',
+  '100 个人冲了上去！',
+  '3 天后',
+  '10 年后',
+  '5 分钟后',
+  '1 秒后',
+  '100 米外',
+  '007号特工走了过来！',
+  '01:00了他还没睡',
+  '01:00:00',
+  '前言不搭后语，不知道他在说什么。',
+  '前言不搭后语',
+  '100 个人走了过来，大家都笑了。'
 ];
 
 for (const line of narrativeCases) {
@@ -178,7 +198,41 @@ partitioned.forEach((c, i) => {
   assert.ok(c.title.includes('ตอนย่อย') || c.title.includes('第1章'));
 });
 assert.ok(partitioned.length >= 3, '750 lines should be partitioned into at least 3 parts');
+
+// Test partitioning a specific chapter without headers inside
+const rawChap2Lines = [];
+for (let i = 1; i <= 650; i++) rawChap2Lines.push(`บทสนทนาบรรทัดที่ ${i}`);
+const rawChap2Text = rawChap2Lines.join('\n');
+const chap2Subsplits = splitNovelIntoChapters(rawChap2Text, 'ตอนที่ 2: การพบกัน', 300);
+assert.ok(chap2Subsplits.length >= 3);
+assert.ok(chap2Subsplits[0].title.startsWith('ตอนที่ 2: การพบกัน (ตอนย่อย 1)'), `Title should preserve chapter identity, got: ${chap2Subsplits[0].title}`);
+
+// Test re-partitioning doesn't create recursive suffixes
+const repartitioned = partitionChapterIfOversized(chap2Subsplits[0], 100, 80);
+assert.ok(!repartitioned[0].title.includes('(ตอนย่อย 1) (ตอนย่อย 1)'), 'Should not create recursive suffixes');
+
 console.log('✓ Oversized chapter automatic partitioning verified!');
+
+console.log('--- 5.1 Testing Large Table of Contents (TOC) Filtering ---');
+const tocLines = ['《社恐的我，被迫闪婚了个国民女神》', '作者：饭桌C位', '', '目录：'];
+for (let i = 1; i <= 50; i++) {
+  tocLines.push(`第${i}章 目录项${i}`);
+}
+tocLines.push('');
+// Real chapters with substantive content
+for (let i = 1; i <= 3; i++) {
+  tocLines.push(`第${i}章 目录项${i}`);
+  for (let l = 1; l <= 50; l++) tocLines.push(`เนื้อหาจริงของตอนที่ ${i} บรรทัดที่ ${l}`);
+  tocLines.push('');
+}
+const tocBookText = tocLines.join('\n');
+const tocResults = splitNovelIntoChapters(tocBookText, '社恐的我，被迫闪婚了个国民女神', 300);
+// Should only contain Prologue/Preamble + 3 Real Chapters (TOC stubs filtered out)
+assert.strictEqual(tocResults.length, 4, `Should filter out 50 TOC stubs, got ${tocResults.length} chapters`);
+assert.ok(tocResults[1].title.includes('第1章'));
+assert.ok(tocResults[2].title.includes('第2章'));
+assert.ok(tocResults[3].title.includes('第3章'));
+console.log('✓ Large Table of Contents filtering verified!');
 
 console.log('--- 6. Testing Protocol Dynamic Padding & parseLines (> 9999 lines) ---');
 // lineTag with width 5

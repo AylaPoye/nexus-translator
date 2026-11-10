@@ -179,6 +179,7 @@ export const NovelDetailScreen: React.FC<NovelDetailScreenProps> = ({
 
   // Re-split oversized chapters (> 300 lines or LINE_NNNN limit error)
   const oversizedChapters = chapters.filter((c) => {
+    if (c.status === 'COMPLETED') return false; // Protect already completed chapters from bulk re-splitting
     if (c.error && (c.error.includes('LINE_NNNN') || c.error.includes('9,999'))) return true;
     if (c.sourceRaw && c.sourceRaw.split('\n').length > 300) return true;
     return false;
@@ -186,6 +187,11 @@ export const NovelDetailScreen: React.FC<NovelDetailScreenProps> = ({
   const hasOversizedOrError = oversizedChapters.length > 0;
 
   const handleResplitChapters = async (targetChapterId?: string) => {
+    if (translatingChapterId !== null) {
+      Alert.alert('กำลังแปลภาษา', 'กรุณารอหรือหยุดการแปลก่อนแบ่งตอนใหม่');
+      return;
+    }
+
     const isSingle = typeof targetChapterId === 'string';
     const targetText = isSingle
       ? 'ต้องการแบ่งตอนนี้ออกเป็นตอนย่อย (ไม่เกิน 300 บรรทัดต่อตอน) หรือไม่?'
@@ -201,14 +207,15 @@ export const NovelDetailScreen: React.FC<NovelDetailScreenProps> = ({
             const updatedChapters: Chapter[] = [];
 
             // Case A: Novel only has 1 chapter and it's oversized or errored (e.g. full novel imported as 1 chapter)
-            if (!isSingle && chapters.length === 1 && (chapters[0].sourceRaw.split('\n').length > 300 || chapters[0].error)) {
+            if (chapters.length === 1 && (chapters[0].sourceRaw.split('\n').length > 300 || chapters[0].error)) {
               const fullRaw = chapters[0].sourceRaw;
-              const splits = splitNovelIntoChapters(fullRaw, novel?.title || 'นิยาย', 300);
+              const splits = splitNovelIntoChapters(fullRaw, novel?.title || chapters[0].title || 'นิยาย', 300);
               splits.forEach((sc) => {
+                const idx = nextIndex++;
                 updatedChapters.push({
-                  id: `chap_${novelId}_${nextIndex}_${Date.now()}`,
+                  id: `chap_${novelId}_${idx}_${Date.now()}`,
                   novelId,
-                  chapterIndex: nextIndex++,
+                  chapterIndex: idx,
                   title: sc.title,
                   sourceRaw: sc.content,
                   status: 'PENDING',
@@ -221,14 +228,16 @@ export const NovelDetailScreen: React.FC<NovelDetailScreenProps> = ({
                 const isTarget = isSingle ? chap.id === targetChapterId : false;
                 const isOver = chap.sourceRaw.split('\n').length > 300 ||
                   (chap.error && (chap.error.includes('LINE_NNNN') || chap.error.includes('9,999')));
+                const canResplit = isTarget || (!isSingle && isOver && chap.status !== 'COMPLETED');
 
-                if (isTarget || (!isSingle && isOver)) {
+                if (canResplit) {
                   const splits = splitNovelIntoChapters(chap.sourceRaw, chap.title, 300);
                   splits.forEach((sc) => {
+                    const idx = nextIndex++;
                     updatedChapters.push({
-                      id: `chap_${novelId}_${nextIndex}_${Date.now()}`,
+                      id: `chap_${novelId}_${idx}_${Date.now()}`,
                       novelId,
-                      chapterIndex: nextIndex++,
+                      chapterIndex: idx,
                       title: sc.title,
                       sourceRaw: sc.content,
                       status: 'PENDING',
@@ -474,6 +483,7 @@ export const NovelDetailScreen: React.FC<NovelDetailScreenProps> = ({
               <TouchableOpacity
                 style={[styles.resplitBtn, { backgroundColor: '#e67e22' }]}
                 onPress={() => handleResplitChapters()}
+                disabled={translatingChapterId !== null}
               >
                 <Ionicons name="cut-outline" size={15} color="#ffffff" />
                 <Text style={styles.resplitBtnText}>แบ่งตอนใหม่ (Re-split into smaller chapters)</Text>
